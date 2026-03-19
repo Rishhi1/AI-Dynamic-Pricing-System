@@ -74,7 +74,7 @@ else:
 # -----------------------------
 # PREPROCESSING (CACHED)
 # -----------------------------
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def preprocess_data(df, target_column):
 
     df = df.copy()
@@ -113,7 +113,6 @@ def train_best_model(X, y):
     models = {
         "Linear": LinearRegression(),
         "RandomForest": RandomForestRegressor(n_estimators=50, max_depth=6),
-        "XGBoost": XGBRegressor(n_estimators=50, max_depth=4, verbosity=0)
     }
 
     best_model = None
