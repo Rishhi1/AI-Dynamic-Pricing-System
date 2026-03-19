@@ -15,33 +15,22 @@ from sklearn.model_selection import train_test_split
 st.set_page_config(page_title="Pricing Dashboard", layout="wide")
 
 # -----------------------------
-# MODERN UI CSS
+# UI CSS
 # -----------------------------
 st.markdown("""
 <style>
 .stApp { background-color: #0A0F1C; color: #E5E7EB; }
+[data-testid="stSidebar"] { background-color: #020617; }
+.block-container { padding-top: 1.5rem; max-width: 1200px; }
 
-.block-container {
-    padding-top: 1rem;
-    max-width: 1100px;
-}
+h1 { font-size: 26px !important; font-weight: 600; }
 
-/* Cards */
-.card {
-    background: rgba(255,255,255,0.04);
-    padding: 20px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.08);
-}
-
-/* Metrics */
 [data-testid="stMetric"] {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.03);
     padding: 15px;
     border-radius: 12px;
 }
 
-/* Buttons */
 div.stButton > button {
     background: #2563EB;
     color: white !important;
@@ -53,86 +42,79 @@ div.stButton > button {
 """, unsafe_allow_html=True)
 
 # -----------------------------
+# SIDEBAR
+# -----------------------------
+st.sidebar.title("Pricing Controls")
+
+uploaded_file = st.sidebar.file_uploader("Upload CSV")
+price = st.sidebar.number_input("Base Price", value=100.0)
+run = st.sidebar.button("Run Analysis")
+
+# -----------------------------
 # HEADER
 # -----------------------------
-st.markdown("""
-<h1 style='font-size: 24px;'>Dynamic Pricing Dashboard</h1>
-<p style='color: #9CA3AF;'>AI-powered revenue optimization engine</p>
-""", unsafe_allow_html=True)
-
+st.title("Dynamic Pricing Dashboard")
+st.caption("AI-powered revenue optimization engine")
 st.markdown("---")
 
 # -----------------------------
-# TABS
+# DATA HANDLING
 # -----------------------------
-tab1, tab2, tab3 = st.tabs(["Upload", "Analysis", "Results"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-# -----------------------------
-# TAB 1 → UPLOAD
-# -----------------------------
-with tab1:
+    st.subheader("Dataset Preview")
+    st.dataframe(df.head())
 
-    st.markdown("### Upload Dataset")
-
-    uploaded_file = st.file_uploader("Upload CSV")
-
-    if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-
-        st.success("Dataset loaded successfully")
-
-        st.dataframe(df.head())
-
-        target_column = st.selectbox("Select Target Column", df.columns)
-
-        st.session_state["df"] = df
-        st.session_state["target"] = target_column
+    target_column = st.selectbox("Select Target Column", df.columns)
+else:
+    df = None
+    target_column = None
 
 # -----------------------------
-# FUNCTIONS
+# PREPROCESSING (CACHED)
 # -----------------------------
+@st.cache_data
 def preprocess_data(df, target_column):
 
+    df = df.copy()
     df = df.drop_duplicates()
     df = df.ffill()
 
-    # -----------------------------
-    # HANDLE DATE COLUMN
-    # -----------------------------
-    for col in df.columns:
-        if "date" in col.lower():
-            df[col] = pd.to_datetime(df[col], errors='coerce')
+    # Handle date column
+    if 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df['year'] = df['date'].dt.year
+        df['month'] = df['date'].dt.month
+        df['day'] = df['date'].dt.day
+        df = df.drop(columns=['date'])
 
-            df[col + "_year"] = df[col].dt.year
-            df[col + "_month"] = df[col].dt.month
-            df[col + "_day"] = df[col].dt.day
-            df[col + "_weekday"] = df[col].dt.weekday
+    if target_column not in df.columns:
+        return None, None
 
-            df = df.drop(columns=[col])
-
-    # -----------------------------
-    # SPLIT TARGET
-    # -----------------------------
     y = df[target_column]
     X = df.drop(columns=[target_column])
 
-    # -----------------------------
-    # ENCODE CATEGORICAL
-    # -----------------------------
+    # Convert categorical
     X = pd.get_dummies(X, drop_first=True)
 
     return X, y
 
-
+# -----------------------------
+# MODEL TRAINING (CACHED)
+# -----------------------------
+@st.cache_resource
 def train_best_model(X, y):
+
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
 
     models = {
         "Linear": LinearRegression(),
-        "RandomForest": RandomForestRegressor(n_estimators=100),
-        "XGBoost": XGBRegressor(n_estimators=50, max_depth=3, learning_rate=0.1)    }
+        "RandomForest": RandomForestRegressor(n_estimators=50, max_depth=6),
+        "XGBoost": XGBRegressor(n_estimators=50, max_depth=4, verbosity=0)
+    }
 
     best_model = None
     best_score = -np.inf
@@ -151,55 +133,34 @@ def train_best_model(X, y):
     return best_model, X.columns, best_name, best_score
 
 # -----------------------------
-# TAB 2 → ANALYSIS
+# PREDICTION
 # -----------------------------
-with tab2:
+def predict(model, input_df, feature_columns):
+    input_df = input_df.reindex(columns=feature_columns, fill_value=0)
+    return max(0, model.predict(input_df)[0])
 
-    st.markdown("### Run Pricing Analysis")
+# -----------------------------
+# RESULTS
+# -----------------------------
+if run:
 
-    price = st.number_input("Base Price", value=100.0)
-
-    train_btn = st.button("Train Model")
-
-if train_btn:
-
-    if "df" not in st.session_state:
-        st.error("Upload dataset first")
+    if df is None:
+        st.error("Please upload a dataset first")
+    
     else:
-        df = st.session_state["df"]
-        target_column = st.session_state["target"]
-
         st.info("Training model...")
 
         X, y = preprocess_data(df, target_column)
 
-        model, feature_cols, model_name, model_score = train_best_model(X, y)
+        if X is None:
+            st.error("Invalid target column")
+            st.stop()
 
-        # Save everything
-        st.session_state["model"] = model
-        st.session_state["features"] = feature_cols
-        st.session_state["price"] = price
-        st.session_state["trained"] = True
+        model, feature_cols, model_name, model_score = train_best_model(X, y)
 
         st.success(f"Best Model: {model_name} | R²: {model_score:.3f}")
 
-# -----------------------------
-# TAB 3 → RESULTS
-# -----------------------------
-with tab3:
-
-    st.markdown("### Results Dashboard")
-
-    if "model" not in st.session_state:
-        st.warning("Run analysis first")
-    else:
-        model = st.session_state["model"]
-        feature_cols = st.session_state["features"]
-        price = st.session_state["price"]
-
-        df = st.session_state["df"]
-        X, y = preprocess_data(df, st.session_state["target"])
-
+        # Use first row as baseline
         sample_row = X.iloc[0:1]
 
         prices = np.linspace(price * 0.8, price * 1.2, 50)
@@ -211,9 +172,7 @@ with tab3:
             if "price" in temp.columns:
                 temp["price"] = p
 
-            temp = temp.reindex(columns=feature_cols, fill_value=0)
-
-            pred = max(0, model.predict(temp)[0])
+            pred = predict(model, temp, feature_cols)
             revenues.append(pred * p)
 
         prices = np.array(prices)
@@ -223,13 +182,13 @@ with tab3:
         optimal_price = prices[best_idx]
         max_revenue = revenues[best_idx]
 
-        base_sales = max(0, model.predict(sample_row)[0])
+        base_sales = predict(model, sample_row, feature_cols)
         base_revenue = base_sales * price
 
-        improvement = ((max_revenue - base_revenue) / base_revenue) * 100
+        improvement = ((max_revenue - base_revenue) / base_revenue) * 100 if base_revenue != 0 else 0
 
         # -----------------------------
-        # KPI CARDS
+        # KPI METRICS
         # -----------------------------
         col1, col2, col3, col4 = st.columns(4)
 
@@ -238,7 +197,7 @@ with tab3:
         col3.metric("Optimal Price", f"{optimal_price:.2f}")
         col4.metric("Max Revenue", f"{max_revenue:.2f}")
 
-        st.metric("Revenue Improvement", f"{improvement:.2f}%")
+        st.metric("Improvement (%)", f"{improvement:.2f}%")
 
         # -----------------------------
         # GRAPH
@@ -247,8 +206,8 @@ with tab3:
 
         fig, ax = plt.subplots(figsize=(9,4))
 
-        ax.plot(prices, revenues, color="#3B82F6", linewidth=2)
-        ax.axvline(optimal_price, linestyle='--', color="#22C55E")
+        ax.plot(prices, revenues)
+        ax.axvline(optimal_price, linestyle='--')
 
         ax.set_facecolor("#0A0F1C")
         fig.patch.set_facecolor("#0A0F1C")
