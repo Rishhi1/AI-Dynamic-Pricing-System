@@ -33,6 +33,14 @@ h1 { font-size: 26px !important; font-weight: 600; }
     padding: 15px;
     border-radius: 12px;
 }
+st.markdown("""
+<style>
+h1 {
+    font-size: 32px !important;
+    font-weight: 700;
+}
+</style>
+""", unsafe_allow_html=True)
 
 div.stButton > button {
     background: #2563EB;
