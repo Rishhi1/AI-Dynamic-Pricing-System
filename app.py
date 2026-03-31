@@ -287,7 +287,9 @@ if user_input:
 for role, msg in st.session_state.chat_history:
     st.write(f"**{role}:** {msg}")
 
-
+if "model" not in st.session_state:
+    st.info("Run analysis first to enable AI assistant")
+    st.stop()
 # -----------------------------
 # AI CHATBOT (SMART)
 # -----------------------------
