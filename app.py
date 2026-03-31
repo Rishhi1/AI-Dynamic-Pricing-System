@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
-from xgboost import XGBRegressor
 from sklearn.metrics import r2_score
 from sklearn.model_selection import train_test_split
 
@@ -19,37 +19,15 @@ st.set_page_config(page_title="Pricing Dashboard", layout="wide")
 # -----------------------------
 st.markdown("""
 <style>
-/* App background */
-.stApp {
-    background-color: var(--background-color);
-    color: var(--text-color);
-}
-
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #020617;
-}
-
-/* Layout */
-.block-container {
-    padding-top: 1.5rem;
-    max-width: 1200px;
-}
-
-/* Title */
-h1 {
-    font-size: 28px !important;
-    font-weight: 700;
-}
-
-/* Metrics */
+.stApp { background-color: var(--background-color); color: var(--text-color); }
+[data-testid="stSidebar"] { background-color: #020617; }
+.block-container { padding-top: 1.5rem; max-width: 1200px; }
+h1 { font-size: 28px !important; font-weight: 700; }
 [data-testid="stMetric"] {
     background: rgba(255,255,255,0.05);
     padding: 15px;
     border-radius: 12px;
 }
-
-/* Button */
 div.stButton > button {
     background: #2563EB;
     color: white !important;
@@ -97,16 +75,11 @@ else:
     target_column = None
 
 # -----------------------------
-# PREPROCESSING (CACHED)
+# PREPROCESSING
 # -----------------------------
-@st.cache_data(show_spinner=False)
 def preprocess_data(df, target_column):
+    df = df.copy().drop_duplicates().ffill()
 
-    df = df.copy()
-    df = df.drop_duplicates()
-    df = df.ffill()
-
-    # Handle date column
     if 'date' in df.columns:
         df['date'] = pd.to_datetime(df['date'], errors='coerce')
         df['year'] = df['date'].dt.year
@@ -118,53 +91,31 @@ def preprocess_data(df, target_column):
         return None, None
 
     y = df[target_column]
-    X = df.drop(columns=[target_column])
-
-    # Convert categorical
-    X = pd.get_dummies(X, drop_first=True)
+    X = pd.get_dummies(df.drop(columns=[target_column]), drop_first=True)
 
     return X, y
 
 # -----------------------------
-# MODEL TRAINING (CACHED)
+# MODEL TRAINING
 # -----------------------------
-@st.cache_resource
 def train_best_model(X, y):
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     models = {
         "Linear": LinearRegression(),
         "RandomForest": RandomForestRegressor(n_estimators=50, max_depth=6),
     }
 
-    best_model = None
-    best_score = -np.inf
-    best_name = ""
+    best_model, best_score, best_name = None, -np.inf, ""
 
     for name, model in models.items():
         model.fit(X_train, y_train)
-        preds = model.predict(X_test)
-        score = r2_score(y_test, preds)
+        score = r2_score(y_test, model.predict(X_test))
 
         if score > best_score:
-            best_score = score
-            best_model = model
-            best_name = name
+            best_score, best_model, best_name = score, model, name
 
     return best_model, X.columns, best_name, best_score
-
-if run and df is not None and target_column is not None:
-    st.session_state["model"] = model
-    st.session_state["feature_cols"] = feature_cols
-    st.session_state["sample_row"] = sample_row
-    st.session_state["optimal_price"] = optimal_price
-    st.session_state["max_revenue"] = max_revenue
-    st.session_state["base_revenue"] = base_revenue
-    st.session_state["df"] = df
-
 
 # -----------------------------
 # PREDICTION
@@ -173,30 +124,23 @@ def predict(model, input_df, feature_columns):
     input_df = input_df.reindex(columns=feature_columns, fill_value=0)
     return max(0, model.predict(input_df)[0])
 
-
-
-
-
-
-
-
+# -----------------------------
+# CHAT FUNCTIONS
+# -----------------------------
 def dynamic_prediction_response(query):
     model = st.session_state.get("model")
-    feature_cols = st.session_state.get("feature_cols")
     sample_row = st.session_state.get("sample_row")
+    feature_cols = st.session_state.get("feature_cols")
 
     if model is None:
-        return "Please run analysis first."
+        return None
 
-    # extract numbers from query (simple parsing)
-    import re
     numbers = re.findall(r"\d+\.?\d*", query)
 
-    temp = sample_row.copy()
-
-    # If user gives a price → use it
     if numbers:
         price_val = float(numbers[0])
+        temp = sample_row.copy()
+
         if "price" in temp.columns:
             temp["price"] = price_val
 
@@ -207,169 +151,115 @@ def dynamic_prediction_response(query):
 
     return None
 
-
-
-
-# -----------------------------
-# RESULTS
-# -----------------------------
-if run:
-
-    if df is None:
-        st.error("Please upload a dataset first")
-    
-    else:
-        st.info("Training model...")
-
-        X, y = preprocess_data(df, target_column)
-
-        if X is None:
-            st.error("Invalid target column")
-            st.stop()
-
-        model, feature_cols, model_name, model_score = train_best_model(X, y)
-
-        st.success(f"Best Model: {model_name} | R²: {model_score:.3f}")
-
-        # Use first row as baseline
-        sample_row = X.iloc[0:1]
-
-        prices = np.linspace(price * 0.8, price * 1.2, 50)
-        revenues = []
-
-        for p in prices:
-            temp = sample_row.copy()
-
-            if "price" in temp.columns:
-                temp["price"] = p
-
-            pred = predict(model, temp, feature_cols)
-            revenues.append(pred * p)
-
-        prices = np.array(prices)
-        revenues = np.array(revenues)
-
-        best_idx = np.argmax(revenues)
-        optimal_price = prices[best_idx]
-        max_revenue = revenues[best_idx]
-
-        base_sales = predict(model, sample_row, feature_cols)
-        base_revenue = base_sales * price
-
-        improvement = ((max_revenue - base_revenue) / base_revenue) * 100 if base_revenue != 0 else 0
-
-        # -----------------------------
-        # KPI METRICS
-        # -----------------------------
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric("Sales", f"{base_sales:.2f}")
-        col2.metric("Revenue", f"{base_revenue:.2f}")
-        col3.metric("Optimal Price", f"{optimal_price:.2f}")
-        col4.metric("Max Revenue", f"{max_revenue:.2f}")
-
-        st.metric("Improvement (%)", f"{improvement:.2f}%")
-
-        # -----------------------------
-        # GRAPH
-        # -----------------------------
-        st.markdown("### Price Optimization Curve")
-
-        fig, ax = plt.subplots(figsize=(9,4))
-
-        ax.plot(prices, revenues)
-        ax.axvline(optimal_price, linestyle='--')
-
-        ax.set_facecolor("#0A0F1C")
-        fig.patch.set_facecolor("#0A0F1C")
-
-        ax.tick_params(colors='white')
-        ax.set_xlabel("Price", color='white')
-        ax.set_ylabel("Revenue", color='white')
-
-        st.pyplot(fig)
-
-
-# -----------------------------
-# CHATBOT
-# -----------------------------
-st.markdown("---")
-st.subheader("💬 AI Assistant")
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-user_input = st.text_input("Ask something about your data or pricing:")
-
-def chatbot_response(query):
-    query = query.lower()
-
-    if "price" in query:
-        return "You can optimize price using the curve shown above."
-    elif "model" in query:
-        return "The app selects the best model based on R² score."
-    elif "revenue" in query:
-        return "Revenue = predicted demand × price."
-    elif "improve" in query:
-        return "Try better features like seasonality or demand trends."
-    else:
-        return "I can help with pricing, revenue, and model insights."
-
-if user_input:
-    response = chatbot_response(user_input)
-
-    st.session_state.chat_history.append(("You", user_input))
-    st.session_state.chat_history.append(("AI", response))
-
-for role, msg in st.session_state.chat_history:
-    st.write(f"**{role}:** {msg}")
-
-if "model" not in st.session_state:
-    st.info("Run analysis first to enable AI assistant")
-    st.stop()
-# -----------------------------
-# AI CHATBOT (SMART)
-# -----------------------------
-st.markdown("---")
-st.subheader("🤖 AI Pricing Assistant")
-
-if "chat" not in st.session_state:
-    st.session_state.chat = []
-
-user_query = st.chat_input("Ask about your data, pricing, or predictions...")
-
 def smart_ai_chat(query):
-    query_lower = query.lower()
+    query = query.lower()
 
     df = st.session_state.get("df")
     optimal_price = st.session_state.get("optimal_price")
     max_revenue = st.session_state.get("max_revenue")
     base_revenue = st.session_state.get("base_revenue")
 
-    # 🔥 1. Dynamic prediction (highest priority)
     dynamic = dynamic_prediction_response(query)
     if dynamic:
         return dynamic
 
-    # 🔥 2. Dataset understanding
     if df is not None:
-        if "columns" in query_lower:
+        if "columns" in query:
             return f"Columns: {', '.join(df.columns)}"
-
-        elif "rows" in query_lower:
+        if "rows" in query:
             return f"Dataset has {df.shape[0]} rows"
-
-        elif "summary" in query_lower:
+        if "summary" in query:
             return df.describe().to_string()
 
-    # 🔥 3. Model insights
-    if "optimal price" in query_lower:
+    if "optimal price" in query:
         return f"Optimal price is {optimal_price:.2f}"
 
-    elif "revenue" in query_lower:
+    if "revenue" in query:
         return f"Base revenue: {base_revenue:.2f}, Max revenue: {max_revenue:.2f}"
 
-    elif "improve" in query_lower:
-        return "You can improve results by adding features like seasonality, demand trends, or competitor pricing."
+    return "Ask about price, revenue, dataset, or predictions."
 
-    return "Ask me about predictions, price, revenue, dataset insights, or improvements."
+# -----------------------------
+# RESULTS
+# -----------------------------
+if run and df is not None and target_column is not None:
+
+    st.info("Training model...")
+
+    X, y = preprocess_data(df, target_column)
+
+    if X is None:
+        st.error("Invalid target column")
+        st.stop()
+
+    model, feature_cols, model_name, model_score = train_best_model(X, y)
+
+    st.success(f"Best Model: {model_name} | R²: {model_score:.3f}")
+
+    sample_row = X.iloc[0:1]
+
+    prices = np.linspace(price * 0.8, price * 1.2, 50)
+    revenues = []
+
+    for p in prices:
+        temp = sample_row.copy()
+        if "price" in temp.columns:
+            temp["price"] = p
+
+        pred = predict(model, temp, feature_cols)
+        revenues.append(pred * p)
+
+    optimal_price = prices[np.argmax(revenues)]
+    max_revenue = max(revenues)
+
+    base_sales = predict(model, sample_row, feature_cols)
+    base_revenue = base_sales * price
+
+    # SAVE STATE
+    st.session_state.update({
+        "model": model,
+        "feature_cols": feature_cols,
+        "sample_row": sample_row,
+        "optimal_price": optimal_price,
+        "max_revenue": max_revenue,
+        "base_revenue": base_revenue,
+        "df": df
+    })
+
+    # METRICS
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Sales", f"{base_sales:.2f}")
+    col2.metric("Revenue", f"{base_revenue:.2f}")
+    col3.metric("Optimal Price", f"{optimal_price:.2f}")
+    col4.metric("Max Revenue", f"{max_revenue:.2f}")
+
+    # GRAPH
+    fig, ax = plt.subplots()
+    ax.plot(prices, revenues)
+    ax.axvline(optimal_price, linestyle='--')
+    st.pyplot(fig)
+
+# -----------------------------
+# CHATBOT
+# -----------------------------
+st.markdown("---")
+st.subheader("AI Pricing Assistant")
+
+if "model" not in st.session_state:
+    st.info("Run analysis first to enable AI assistant")
+
+else:
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    user_input = st.chat_input("Ask something...")
+
+    if user_input:
+        reply = smart_ai_chat(user_input)
+
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
