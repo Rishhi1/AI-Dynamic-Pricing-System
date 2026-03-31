@@ -241,3 +241,38 @@ if run:
         ax.set_ylabel("Revenue", color='white')
 
         st.pyplot(fig)
+
+
+# -----------------------------
+# CHATBOT
+# -----------------------------
+st.markdown("---")
+st.subheader("💬 AI Assistant")
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+user_input = st.text_input("Ask something about your data or pricing:")
+
+def chatbot_response(query):
+    query = query.lower()
+
+    if "price" in query:
+        return "You can optimize price using the curve shown above."
+    elif "model" in query:
+        return "The app selects the best model based on R² score."
+    elif "revenue" in query:
+        return "Revenue = predicted demand × price."
+    elif "improve" in query:
+        return "Try better features like seasonality or demand trends."
+    else:
+        return "I can help with pricing, revenue, and model insights."
+
+if user_input:
+    response = chatbot_response(user_input)
+
+    st.session_state.chat_history.append(("You", user_input))
+    st.session_state.chat_history.append(("AI", response))
+
+for role, msg in st.session_state.chat_history:
+    st.write(f"**{role}:** {msg}")
