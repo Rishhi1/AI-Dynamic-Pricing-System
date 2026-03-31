@@ -19,23 +19,37 @@ st.set_page_config(page_title="Pricing Dashboard", layout="wide")
 # -----------------------------
 st.markdown("""
 <style>
+/* App background */
 .stApp {
     background-color: var(--background-color);
     color: var(--text-color);
 }
-[data-testid="stSidebar"] { background-color: #020617; }
-.block-container { padding-top: 1.5rem; max-width: 1200px; }
 
-h1 { font-size: 26px !important; font-weight: 600; }
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #020617;
+}
 
+/* Layout */
+.block-container {
+    padding-top: 1.5rem;
+    max-width: 1200px;
+}
+
+/* Title */
+h1 {
+    font-size: 28px !important;
+    font-weight: 700;
+}
+
+/* Metrics */
 [data-testid="stMetric"] {
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.05);
     padding: 15px;
     border-radius: 12px;
 }
-</style>
-""", unsafe_allow_html=True)
 
+/* Button */
 div.stButton > button {
     background: #2563EB;
     color: white !important;
