@@ -62,12 +62,13 @@ st.markdown("---")
 # -----------------------------
 if uploaded_file is not None:
     try:
-    df = pd.read_csv(uploaded_file, encoding='utf-8')
+        df = pd.read_csv(uploaded_file, encoding='utf-8')
     except:
         try:
             df = pd.read_csv(uploaded_file, encoding='latin1')
         except:
             df = pd.read_excel(uploaded_file)
+
     st.subheader("Dataset Preview")
     st.dataframe(df.head())
 
