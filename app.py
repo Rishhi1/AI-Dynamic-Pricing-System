@@ -173,6 +173,43 @@ def predict(model, input_df, feature_columns):
     input_df = input_df.reindex(columns=feature_columns, fill_value=0)
     return max(0, model.predict(input_df)[0])
 
+
+
+
+
+
+
+
+def dynamic_prediction_response(query):
+    model = st.session_state.get("model")
+    feature_cols = st.session_state.get("feature_cols")
+    sample_row = st.session_state.get("sample_row")
+
+    if model is None:
+        return "Please run analysis first."
+
+    # extract numbers from query (simple parsing)
+    import re
+    numbers = re.findall(r"\d+\.?\d*", query)
+
+    temp = sample_row.copy()
+
+    # If user gives a price → use it
+    if numbers:
+        price_val = float(numbers[0])
+        if "price" in temp.columns:
+            temp["price"] = price_val
+
+        pred = predict(model, temp, feature_cols)
+        revenue = pred * price_val
+
+        return f"For price {price_val}, predicted demand is {pred:.2f} and revenue is {revenue:.2f}"
+
+    return None
+
+
+
+
 # -----------------------------
 # RESULTS
 # -----------------------------
