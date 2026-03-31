@@ -53,7 +53,7 @@ run = st.sidebar.button("Run Analysis")
 # -----------------------------
 # HEADER
 # -----------------------------
-st.title("Dynamic Pricing Dashboard")
+st.title("AI Dynamic Pricing System")
 st.caption("AI-powered revenue optimization engine")
 st.markdown("---")
 
