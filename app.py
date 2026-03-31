@@ -156,6 +156,17 @@ def train_best_model(X, y):
 
     return best_model, X.columns, best_name, best_score
 
+
+# Store important outputs for chatbot
+st.session_state["model"] = model
+st.session_state["feature_cols"] = feature_cols
+st.session_state["sample_row"] = sample_row
+st.session_state["optimal_price"] = optimal_price
+st.session_state["max_revenue"] = max_revenue
+st.session_state["base_revenue"] = base_revenue
+st.session_state["df"] = df
+
+
 # -----------------------------
 # PREDICTION
 # -----------------------------
